@@ -1,0 +1,164 @@
+# 타임존에 대해 공부해보자
+
+from datetime import datetime
+from datetime import timezone
+
+#python에서는 timezone에 utc를 사용해서 time존을 바꾼다. 이 방법밖에 없다.
+timezone.utc
+# 결과: datetime.timezone.utc
+
+datetime(2019,1,1) # timezone unawared datetime : 타임존이 어딘지 모른다
+# 결과: datetime.datetime(2019, 1, 1, 0, 0)
+
+datetime(2019,1,1,tzinfo=timezone.utc) # timezone awared datetime
+# 결과: datetime.datetime(2019, 1, 1, 0, 0, tzinfo=datetime.timezone.utc)
+
+
+# extra package 를 깔아야한다.
+conda install pytz
+pip install pytz
+
+import pytz
+pytz.utc # <UTC>
+
+
+# timezone가능한 지역 보기
+pytz.all_timezones
+
+
+KST = pytz.timezone('Asia/Seoul') # seoul 타임존 사용하기
+KST # <DstTzInfo 'Asia/Seoul' LMT+8:28:00 STD>
+
+
+# 아까 지정한 datetime에 대한 tzinfo를 확인하기
+datetime(2019,1,1,tzinfo=timezone.utc) == pytz.UTC.localize(datetime(2019,1,1))
+# 결과: True
+
+datetime(2019,1,1,tzinfo=timezone.utc) == KST.localize(datetime(2019,1,1))
+# 결과: False : 9시간 차이가 나기 때문
+
+
+mydate = datetime(2019,1,1)
+mydate # datetime.datetime(2019, 1, 1, 0, 0)
+mydate.replace(year=2018) # 버그가 있는듯 하다: replace를 사용하지말고 tzinfo=KST를 적용해서 Localize해야한다. (???)
+mydate.replace(tzinfo=KST) # datetime.datetime(2019, 1, 1, 0, 0, tzinfo=<DstTzInfo 'Asia/Seoul' LMT+8:28:00 STD>)
+
+
+# 정확히 9시간 차이가 된다.
+mydate_kst = KST.localize(mydate)
+mydate_kst # datetime.datetime(2019, 1, 1, 0, 0, tzinfo=<DstTzInfo 'Asia/Seoul' KST+9:00:00 STD>)
+
+
+# 타임존 바꾸기
+mydate_kst.astimezone(pytz.utc) == mydate_kst
+# 결과: True
+
+
+mydate_kst.strftime('%Y-%m-%d %H:%M:%S%Z') # '2019-01-01 00:00:00KST'
+mydate_kst.astimezone(pytz.utc).strftime('%Y-%m-%d %H:%M:%S%Z') # '2018-12-31 15:00:00UTC'
+
+
+# 지역에 따라 값이 다르게 출력됨 = 잘 모르고 사용하면 위험함
+datetime.today() # datetime.datetime(2019, 5, 28, 19, 54, 40, 416791) : 오늘 시간 제대로 출력됨 : 2019.05.28.PM.7:54
+
+
+# 전세계 어디서 실행하든 똑같은 코드가 나옴
+datetime.utcnow().astimezone(KST)
+# 결과: datetime.datetime(2019, 5, 28, 10, 55, 11, 435348, tzinfo=<DstTzInfo 'Asia/Seoul' KST+9:00:00 STD>)
+
+
+today = datetime.today()
+today # datetime.datetime(2019, 5, 28, 19, 55, 26, 562381) : 오늘 시간 제대로 출력됨 : 2019.05.28.PM.7:54
+
+today.weekday() # 3:목요일 / 0:월~6:일
+# 1 : 2019.05.28.PM.7:54.화
+
+datetime(2019,1,23).weekday() # 2:수요일
+
+-------------------------------------------------------------------------------
+
+##(문제) 가장 최근의 금요일?
+
+# 이건 안좋은 함수
+def last_friday():
+    today = KST.localize(datetime.today()) # 오늘
+    offset = 4 - today.weekday() % 4
+    aweekago = today.replace(day=today.day-7) # 이거 떄문에 월초에 사용하면 오류남: 마이너스값 나오니까..
+    last_friday = aweekago.replace(day=aweekago.day+offset)
+    return last_friday
+
+last_friday() # datetime.datetime(2019, 5, 24, 19, 59, 12, 765400, tzinfo=<DstTzInfo 'Asia/Seoul' KST+9:00:00 STD>)
+
+
+# 해결방안
+from datetime import timedelta
+pytz.utc.localize(mydate) - KST.localize(mydate) # datetime.timedelta(seconds=32400)
+pytz.utc.localize(mydate) + timedelta(seconds=32400) # datetime.datetime(2019, 1, 1, 9, 0, tzinfo=<UTC>)
+
+
+# 고친 함수
+def last_friday():
+    today = KST.localize(datetime.today()) # 오늘
+    offset = 4 - today.weekday() % 4
+    aweekago = today - timedelta(weeks=1)
+    #aweekago = today.replace(day=today.day-7) # 이거 떄문에 월초에 사용하면 오류남: 마이너스값 나오니까..
+    last_friday = aweekago + timedelta(days=offset)
+    #last_friday = aweekago.replace(day=aweekago.day+offset)
+    return last_friday
+
+last_friday() # datetime.datetime(2019, 5, 24, 20, 0, 59, 141210, tzinfo=<DstTzInfo 'Asia/Seoul' KST+9:00:00 STD>)
+
+
+-------------------------------------------------------------------------------
+
+import pandas as pd
+from pandas import DataFrame,Series
+
+import numpy as np
+
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+
+df_apple = pd.read_csv('c:/sisisi/apple_stock.csv',index_col='Date',parse_dates=True)
+df_apple.head()
+
+
+# 각각의 볼륨을 인덱스로 갖고있기 떄문에 바로 그려줌: 매일매일이 인덱스임
+# Adj Close: 수정 종가
+df_apple[['Volume','Adj Close']].plot()
+df_apple[['Volume','Adj Close']].plot(secondary_y=['Volume'])
+
+
+# 4개 한번에 묶어서 실행
+df_apple['Adj Close'].plot(figsize=(12,8))
+plt.ylabel('Close Price')
+plt.xlabel('Overwrite Date')
+plt.title('APPLE')
+
+
+df_apple['Adj Close']['2015-01-01':'2018-01-01'].plot()
+
+
+# 리스트값이면 ':' 사용 가능하지만 그냥 문자값이니까 xlim=['2015-01-01','2018-01-01'] 이렇게 중간에 ',' 해줘야함
+df_apple['Adj Close'].plot(xlim=['2015-01-01','2018-01-01']) # y축이 0~250
+df_apple['Adj Close'].plot(xlim=['2015-01-01','2018-01-01'],ylim=[70,180]) # y축이 70~180 / ylim=[70,180]: ylim값 넣어주면 좀 더 다이나믹하게 보여줌
+
+
+index = df_apple['2015-01-01':'2018-01-01'].index
+index
+
+stock = df_apple['2015-01-01':'2018-01-01']['Adj Close']
+stock
+
+-------------------------------------------------------------------------------
+
+import matplotlib.dates as dates
+
+# 묶어서 한번에 실행
+fig,ax = plt.subplots(figsize=(15,3))
+ax.plot_date(index,stock,'-')
+#ax.xaxis.set_major_locator(dates.MonthLocator()) # 그래프를 월 단위로 끊어버림 / 해도 되고 안해도 되고
+#ax.xaxis.set_major_formatter(dates.DateFormatter('%b\n%Y')) # 단위마다 월 표기해줌 / 해도 되고 안해도 되고
+fig.autofmt_xdate()
+plt.tight_layout()

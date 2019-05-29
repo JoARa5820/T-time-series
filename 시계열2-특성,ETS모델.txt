@@ -1,0 +1,107 @@
+## 시계열 데이터 특성
+시계열 데이터는 몇가지 속성들을 가지고 있는데 그림을 통해 그것들을 알아보고 중요 용어를 정리합니다.
+
+-Trends(경향)
+-Seasonality(계절성) : 반복되는 트렌드
+-Cyclical(주기적인): 일정하지 않은 기간의 트렌드
+ 2번이든 3번이든 fluctuatiton(파동)이 생길 경우 -> 이에 해당되지 않으면 noise가 된다. 
+ 
+
+## ETS 모델
+데이터의 패턴을 더 잘 파악하기 위해서 또는 예측을 수행하기 위해 Smoothing을 합니다.
+Smoothing을 위해서 Error , Trend , Seasonality 요소들을 활용하는데, 각각을 더하거나 곱하여 Smoothing을 합니다.
+또한 이것들을 가지고 시계열 데이터를 모델링 할 수 있습니다.
+
+
+## ETS 모델
+# ETS Decomposition
+- ETS 컴포넌트들을 시각화 하는 것은 데이터의 흐름을 이해하는 데 큰 도움이 됩니다.
+
+-------------------------------------------------------------------------------
+
+# package 문제 해결하기
+# python3만 tacademy를
+conda create --name tacademy python=3
+activate tacademy
+conda install pandas statsmodels numpy
+(e) tacademy > conda install 
+
+-------------------------------------------------------------------------------
+
+# 실습
+
+import pandas as pd
+from pandas import DataFrame,Series
+
+import numpy as np
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+# y_t = Trend + Seasonality + Error
+
+
+conda install statsmodels
+from statsmodels.tsa.seasonal import seasonal_decompose
+
+
+# 1-100으로 상승 데이터 만들기
+[i for i in range(1,100)]
+
+# noise 섞어주기 
+series = pd.Series([i+np.random.randint(10) for i in range(1,100)])
+
+# pandas 로 사용했기 때문에 freq를 설정해줘야함
+result = seasonal_decompose(series, model='additive', freq=1)
+
+result.plot()
+
+# 위에 버그임..그래프가 두개가 나옴
+result.plot();
+
+
+
+# Observed: 기본값
+# 나중에 갖다 쓸 수 있으니까 함수화 / 각각의 그래프(슬랏): ax0)
+# visualization: 기존의 plot을 더 크게 만들기
+# series로 입력이 들어오면 series로
+def plot_decompose(decomposeresult):
+    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4,1,figsize=(15,8))
+    decomposeresult.observed.plot(legend=False,ax=ax1)
+    ax1.set_ylabel('Observed')
+    decomposeresult.trend.plot(legend=False,ax=ax2)
+    ax2.set_ylabel('Trend')
+    decomposeresult.seasonal.plot(legend=False,ax=ax3)
+    ax3.set_ylabel('Seasonal')
+    decomposeresult.resid.plot(legend=False,ax=ax4)
+    ax4.set_ylabel('Resid')
+
+
+plot_decompose(result)
+
+
+# y_t = Level * Error * Trend * Seasonality
+# log(y_t) = Level + Error + Trend + Seasonality # log를 씌워주면 multiply가 +가 되므로
+
+
+series = pd.Series([i**2 for i in range(1,100)])
+series.plot()
+
+result = seasonal_decompose(series,model='multiplicative',freq=1)
+plot_decompose(result)
+
+
+airline = pd.read_csv('c:/sisisi/airline_passengers.csv',index_col='Month')
+airline.plot()
+airline.head()
+airline.tail()
+
+airline.index = pd.to_datetime(airline.index)
+airline.index
+
+
+# seasonality도 있는 것 같으니 multiplicative모델로 decompose(분해)해도 큰 문제가 없음
+# datetime으로 seriesdata (1일로 초기화 되어있음)
+
+
+result = seasonal_decompose(airline['Thousands of Passengers'],model='multiplicative')
+plot_decompose(result)

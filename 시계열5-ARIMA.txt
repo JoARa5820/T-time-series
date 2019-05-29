@@ -1,0 +1,256 @@
+## ARIMA
+- ARIMA(p,d,q)(P,D,Q)m # 트렌드(p,d,q),시즈널리티(P,D,Q)m / 트렌트만 있으면 3개만 써주면 됨
+
+
+# statinary한 값(고정된 값)을 먼저 만든다.
+
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+
+df = pd.read_csv('C:/sisisi/monthly_milk_production.csv',index_col='Month',parse_dates=True)
+df.info()
+df.plot() # seasonality하고 trend함을 알 수 있다.
+
+
+timeseries = df['pounds per cow']
+timeseries.rolling(12).mean().plot()
+timeseries.rolling(12).std().plot() # 일정한 부분과 일정하지 않은 부분이 있는 것을 알 수 있다.
+
+-------------------------------------------------------------------------------
+
+from statsmodels.tsa.seasonal import seasonal_decompose
+
+decomposition = seasonal_decompose(df['pounds per cow'])
+
+
+# 묶어서 실행하기
+fig = plt.figure(figsize=(15,7))
+fig = decomposition.plot()
+fig.set_size_inches(15,7)
+
+-------------------------------------------------------------------------------
+
+from statsmodels.tsa.stattools import adfuller
+
+result = adfuller(df['pounds per cow'])
+result
+# 결과값:
+Out[387]: 
+(-1.3038115874221285,
+ 0.6274267086030321, # 이게 0.05보다 작으면 의미있는것임 = Stationary하다(변화가 없다,고정되어있다.)
+ 13,
+ 154,
+ {'1%': -3.473542528196209,
+  '5%': -2.880497674144038,
+  '10%': -2.576878053634677},
+ 1115.1730447395112)
+
+-------------------------------------------------------------------------------
+
+def adf_check(ts):
+    result = adfuller(ts)
+    if result[1] <= 0.05:
+        print('Stationary {}'.format(result[1]))
+    else:
+        print('Non-Stationary {}'.format(result[1]))
+
+-------------------------------------------------------------------------------
+
+adf_check(df['pounds per cow']) # Non-Stationary 0.6274267086030301 : 고정되어있지않다.
+# df['pounds per cow'].plot()
+
+df['1st diff'] = df['pounds per cow'] - df['pounds per cow'].shift(1)
+adf_check(df['1st diff'].dropna()) # Stationary 0.030068004001785248 : 고정되어있다.
+df['1st diff'].plot()
+
+
+# 혹시 모르니 한번 더 differencing 해보자 (구별해보자?차이가 있나 확인해보자?)
+
+df['2nd diff'] = df['1st diff'] - df['1st diff'].shift(1)
+adf_check(df['2nd diff'].dropna()) # Stationary 1.1126989332079236e-26
+df['2nd diff'].plot()
+
+
+df['seasonal diff'] = df['pounds per cow'] - df['pounds per cow'].shift(12)
+adf_check(df['seasonal diff'].dropna()) # Non-Stationary 0.16079880527711365
+df['seasonal diff'].plot()
+
+
+df['seasonal 1st diff'] = df['1st diff'] - df['1st diff'].shift(12)
+adf_check(df['seasonal 1st diff'].dropna()) # Stationary 1.865423431878848e-05
+df['seasonal 1st diff'].plot()
+
+# d = 1, D = 1
+
+from statsmodels.graphics.tsaplots import plot_acf,plot_pacf
+plot_acf(df['1st diff'].dropna()); # Q
+plot_acf(df['seasonal 1st diff'].dropna());
+
+# 상관관계가 있는지 확인 : 20개중에 2개 이상이면 95% 유의수준 아래 상관있다고 할 수 있음
+# 그래프에서) 앞에서 상관관계가 없는데 뒤에서 상관관계가 있을순 없음
+plot_pacf(df['1st diff'].dropna(),method='ywm') # 오류나는 경우가 많으니 method 넣어준다.
+plot_pacf(df['seasonal 1st diff'].dropna(),method='ywm') # P / 오류나는 경우가 많으니 method 넣어준다.
+
+-------------------------------------------------------------------------------
+
+# P=1,Q=1
+# p=0,d=1,q=0
+# p=1,d=1,q=1
+
+# 하이퍼 파라메터 이용하듯이..?
+# Hyper Parameter란 신경망 학습을 통해서 튜닝 또는 최적화 해야하는 주변수가 아니라 학습 진도율이나 일반화 변수처럼 사람들이 선험적 지식으로 설정을 하거나 또는 외부 모델 메커니즘을 통해 자동으로 설정이 되는 변수를 말한다.
+# (참고) http://www.engear.net/wp/hyper-paramertesr-%EB%A8%B8%EC%8B%A0%EB%9F%AC%EB%8B%9D/
+
+model = sm.tsa.statespace.SARIMAX(df['pounds per cow'],order=(0,1,0),seasonal_order=(1,1,1,12))
+result = model.fit()
+print(result.summary())
+#=> AIC(Akaike Information Criterion)                           1074.131 : 성능 수를 의미
+#=> BIC(Bayesian Information Criterion)                         1083.261
+
+
+# AIC는 모형과 데이터의 확률 분포 사이의 Kullback-Leibler 수준을 가장 크게하기 위한 시도에서 나왔다.
+# BIC는 데이터가 exponential family라는 가정하에 주어진 데이터에서 모형의 likelihood를 측정하기 위한 값에서 유도되었다.
+# 둘 다 값이 작을 수록 올바른 모형에 가깝다.
+# (참고) https://datascienceschool.net/view-notebook/bfe4438b46674c68a5ba6598147a5527/
+
+
+result.resid.plot()
+result.resid.plot(kind='kde')
+
+len(df['pounds per cow']) # 168
+
+df['forecast'] = result.predict(start=150,end=168,dynamic=True)
+
+df[['pounds per cow','forecast']].plot(figsize=(12,8)) # forecast(예측)이 잘 되었음을 볼 수 있음
+
+-------------------------------------------------------------------------------
+
+shampoo = pd.read_csv('c:/sisisi/sales-of-shampoo.csv',index_col='Month',parse_dates=True)
+shampoo.head()
+
+from datetime import datetime
+
+def dateparser(x):
+    return datetime.strptime('190'+x,"%Y-%m")
+    # 변경: '1-01' -> '1901-01'
+
+
+# 에러..?
+shampoo = pd.read_csv('c:/sisisi/sales-of-shampoo.csv',index_col='Month',parse_dates=True,date_parser=dateparser)
+shampoo.info()
+
+adf_check(shampoo['Sales of shampoo']) # Non-Stationary 1.0
+
+
+# 1차원 부터 진행
+shampoo['1st diff'] = shampoo['Sales of shampoo'] - shampoo['Sales of shampoo'].shift(1)
+adf_check(shampoo['1st diff'].dropna()) # Stationary 1.799857414168716e-10
+d = 1
+shampoo['1st diff'].plot()
+
+
+shampoo['2nd diff'] = shampoo['1st diff'] - shampoo['1st diff'].shift(1)
+adf_check(shampoo['2nd diff'].dropna()) # Stationary 0.003906334939660027
+shampoo['2nd diff'].plot()
+
+-------------------------------------------------------------------------------
+
+from statsmodels.tsa.arima_model import ARIMA
+p = list(range(0,4))
+d = [1,2]
+q = [0]
+
+import itertools # combination을 만들 떄 사용
+pdq = list(itertools.product(p,d,q))
+pdq
+# 결과값:
+Out[211]: 
+[(0, 1, 0),
+ (0, 2, 0),
+ (1, 1, 0),
+ (1, 2, 0),
+ (2, 1, 0),
+ (2, 2, 0),
+ (3, 1, 0),
+ (3, 2, 0)]
+
+
+# 최소값을 찾는 것이 목표이다.
+for param in pdq:
+    ARIMA(shampoo['Sales of shampoo'],order = param)
+    result = model.fit(disp=0)
+    print('ARIMA{} - AIC:{}'.format(param,result.aic))
+# => 위의 pdq에 따른 각각의 경우에 따른 AIC값이 출력됨
+
+# AIC값이 작으면 작을수록 좋은것임 / ARIMA값에 따라 달라짐 => p=4,d=2,q=0일떄가 제일 좋음 => 이때 rolling forecast를 해줌..
+
+#p=4
+#d=2
+#q=0
+
+ 
+X = shampoo['Sales of shampoo'].values
+
+# train / test set 나누기
+size = int(len(X) * 0.66)
+train,test = X[0:size],X[size:]
+
+# train한 후 첫번째 테스트 값을 가져오고, 두번째는 첫번째 테스트 값의 train을 옮기면서 값을 예측(?)
+history = [x for x in train]
+predictions = []
+
+for t in range(len(test)):
+    model = ARIMA(history, order=(4,2,0))
+    result = model.fit(disp=0)
+    output = result.forecast()
+    yhat = output[0]
+    predictions.append(yhat)
+    obs=test[t]    
+    history.append(obs)
+    
+
+from sklearn.metrics import mean_squared_error
+error = mean_squared_error(test,predictions)
+rmse = np.sqrt(error)
+rmse # 87.1569381565244
+
+shampoo['Sales of shampoo']
+shampoo['Sales of shampoo'].describe() # 데이터를 정리해서 보여줌 (summary처럼)
+
+
+# 묶어서 실행하기
+plt.plot(test)
+plt.plot(predictions,color='red')
+# => test값과 prediction값이 많이 차이남 = 예측의 정도가 좋지 않음
+
+-------------------------------------------------------------------------------
+
+# rmse를 줄이기 위해 order값을 (4,1,0)으로 바꿔봄
+
+# 초기화
+history = [x for x in train]
+predictions = []
+
+# 다시 셋팅
+for t in range(len(test)):
+    model = ARIMA(history, order=(4,1,0))
+    result = model.fit(disp=0)
+    output = result.forecast()
+    yhat = output[0]
+    predictions.append(yhat)
+    obs=test[t]    
+    history.append(obs)
+    
+# 결과값 확인
+from sklearn.metrics import mean_squared_error
+error = mean_squared_error(test,predictions)
+rmse = np.sqrt(error)
+rmse # 81.54502211283729
+# => 그래도 rmse 오차값을 좀 줄여줬다..(4,2,0)값보다 (4,1,0)값이 더 좋았다.
+
+
+# 끝

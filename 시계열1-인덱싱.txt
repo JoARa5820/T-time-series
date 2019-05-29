@@ -1,0 +1,203 @@
+## 시계열 데이터 분석
+- Time Series with Pandas
+- 시계열 데이터 특성
+- ETS 모델
+- SMA, WMA, SES 모델
+- ARIMA 모델
+
+-------------------------------------------------------------------------------
+
+# 시계열 데이터는 시간 데이터를 인덱스로 하는 연속된 데이터 입니다.
+# 시간 데이터를 Python 의 DateTime 타입으로 바꾸어, Pandas 가 제공하는 시계열 데이터를 처리하는 아래 기능들을 학습합니다.
+- DateTime 인덱스 : time 또는 date 정보는 별개의 칼럼이기보다 인덱스인 경우가 많음
+- Time Resampling : 넓은 주기로 데이터를 집계(aggregate ) 해야 하는 경우 Time Resampling 이 필요 / group by 대신 Pandas의 frequency sampling 도구 이용하는 것이 바람직함
+- Time Shifts : 시계열 분석 알고리즘을 사용하기 위해 데이터를 임의 시간만큼 앞 또는 뒤로 이동시켜야 할 때
+- Rolling and Expanding : 수집한 데이터들에 노이즈가 포함되어 있는 경우 데이터의 일반적인 트렌드를 구하기 위해 rolling mean (또는 moving average) 을 사용하기도 함.
+
+-------------------------------------------------------------------------------
+
+## 시계열 자료 다루기 (참고)https://datascienceschool.net/view-notebook/8959673a97214e8fafdb159f254185e9/
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from datetime import datetime
+
+today = datetime(2019,1,24)
+today # datetime.datetime(2019, 1, 24, 0, 0)
+
+datetime(2019,1,24,13,39) # datetime.datetime(2019, 1, 24, 13, 39)
+
+dates = [datetime(2019,1,23),datetime(2019,1,24)]
+dates # [datetime.datetime(2019, 1, 23, 0, 0), datetime.datetime(2019, 1, 24, 0, 0)]
+
+-------------------------------------------------------------------------------
+
+## 간단히) 시간을 인덱스 지정하여 표(df)로 출력
+# 범위 셀렉션이 쉽기 떄문에 datetime인덱스를 사용하는 것
+data = np.random.randn(2,2)
+dt_index = pd.DatetimeIndex(dates)
+cols = ['A','B']
+
+
+df = pd.DataFrame(data = data, index = dt_index, columns = cols) # 시간을 index로 지정할거니까
+df # 각 시간(2019-01-23과 2019-01-24)을 인덱스로 지정하여 df로 출력함
+# pd.DataFrame(data = data, index = dt_index, columns = cols).reset_index() # 이건 시간을 index로 지정 x
+
+
+df.index.argmax() # argmax함수: 결과 중 최대값의 인덱스(위치)를 얻고자 할 때 사용
+df.index.max() # Timestamp('2019-01-24 00:00:00')
+
+-------------------------------------------------------------------------------
+
+## RESAMPLING
+# resample 연산을 쓰면 시간 간격을 재조정하는 리샘플링(resampling)이 가능
+
+df = pd.read_csv('c:/sisisi/apple_stock.csv')
+df.info() # 보면 Date가 object라는건 문자형식이라는 뜻 - 날짜형으로 바꾸고 인덱스로 지정하자
+
+df['Date'] = df['Date'].apply(pd.to_datetime)
+df.info() # 문자형이 날짜형으로 바뀜 : datetime64[ns]
+
+df.set_index('Date',inplace=True)
+df.head() # Date가 인덱스가 되었음을 볼 수 있음
+
+df['month'] = df.index.month # 각 date에 대한 month를 month컬럼 만들어서 저장하기
+df.head()
+
+df.groupby('month').agg(sum) # 연도 구분없이 그냥 월로 다 합해버림 - 잘못된것
+
+df.groupby(df.index.year).sum() # 연도별 합을 구해줌
+df.groupby([df.index.year, df.index.month]).agg(sum) # 연도,달별 합을 구분해서 구해줌
+
+# 구글: time series offset aliases : 이걸 보면서 해야함
+
+# offset aliases를 이용해서 리샘플링 하기
+df.resample(rule='A').sum() # 'A'를 기준으로 샘플링(추출)해라(?)
+df.resample(rule='A').mean()
+df.resample(rule='A').mean()['2009'] # index설정 후 조작하면 이렇게 원하는 값 바로 뽑아낼수있음
+
+
+# 샘플의 첫번째 값을 리턴하는 함수
+def first_day(sample):
+    return sample[0]
+
+
+# 범위 셀렉션이 쉽기 떄문에 (datetime인덱스를 사용)
+df.resample(rule='A').apply(first_day)
+
+df['Close'].resample('A').mean() # 종가의 연 평균
+df['Close'].resample('A').mean().plot(kind='bar') # 종가의 연평균을 bar chart로 그려라
+
+df['Open'].resample('M').max().plot(kind='bar',figsize=(15,8)) # 09년~18년까지 매월마다의 max값 출력 / figsize: 크기 키우기
+df['Open']['2015-8':].resample('M').max().plot(kind='bar',figsize=(15,8)) # 2015년 8월 이후 매월 값
+df['Open']['2015/8':].resample('M').max().plot(kind='bar',figsize=(15,8)) # 2015년 8월 이후 매월 값
+df['Open']['2015-8':'2015-12'].resample('M').max().plot(kind='bar',figsize=(15,8)) # 2015년 8월~12월까지 매월 값
+
+-------------------------------------------------------------------------------
+
+# 토일 뺴고 월~금의 데이터(위클리 데이터)만 뽑아옴
+# pd.date_range 함수를 쓰면 모든 날짜/시간을 일일히 입력할 필요없이 시작일과 종료일 또는 시작일과 기간을 입력하면 범위 내의 인덱스를 생성해 준다.
+# freq='B' : 주말이 아닌 평일
+# (참고) https://datascienceschool.net/view-notebook/8959673a97214e8fafdb159f254185e9/
+# (참고) http://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html
+daily_daterange = pd.date_range(start=datetime(2018,9,1),end=datetime(2019,1,24),freq='B')
+daily_daterange
+
+daily_dataset = pd.DataFrame(data={'value':np.random.rand(len(daily_daterange))},index=daily_daterange)
+daily_dataset.head(10) # 각 일별(pd.date_range로 만들어진 날들) value값들
+
+daily_dataset.resample('W-MON').min() # 위클리중 먼데이값
+daily_dataset.resample('M').min() # 마지막날의 최소값
+
+-------------------------------------------------------------------------------
+
+## Shifting
+
+df = pd.read_csv('c:/sisisi/apple_stock.csv',index_col='Date')
+df.index = pd.to_datetime(df.index)
+df.index
+df.head()
+df['2009'] # 인덱스값(date값)이 09년인것들 출력
+df['2010'] # 인덱스값(date값)이 10년인것들 출력
+
+
+temp = np.asarray(df['Close'])
+temp[:-1]
+temp[1:]
+
+
+# 쉬프팅의 장점:앞에 한줄 비우고 넘겨버리기 = 맨 뒷줄 밀려서 없어져버림
+df.shift(1).head() # 맨 앞줄 NaN
+df.shift(1).tail()
+# 위의 것과 반대로 쉬프팅 할수도 있다.
+df.shift(-1).head()
+df.shift(-1).tail() # 맨 뒷줄 NaN
+
+
+df.tshift(freq='M',periods=1).head() # freq='M',periods=1: 이 프리퀀시의 1달만큼 또는 두달만큼, 1년만큼 쉬프팅할수도 있다.
+# df.tshift(freq='M',periods=1).head() -> NotImplementedError: Not supported for type Index...?
+
+-------------------------------------------------------------------------------
+
+## Rolling & Expanding
+# 수집한 데이터들에 노이즈가 포함되어 있는 경우
+데이터의 일반적인 트렌드를 구하기 위해 rolling mean (또는 moving average) 을 사용하기도 함.
+Pandas에 내장된 rolling 함수를 이용하면 주어진 시한 내 평균 (rolling mean) 등을 구할 수 있습니다.
+임의 시간 간격의 window를 만들고 그 안에서 mean 같은 통계적 aggregation 을 실행하면 됩니다.
+
+# rolling: 일정 범위에서 규칙적으로 연산(ex.이동평균) / 일주일마다의 주가 평균을 알고 싶을 때 일일히 계산(for문)하면 비효율적 -> rolling 사용
+# (참고) https://ordo.tistory.com/67
+
+df = pd.read_csv('c:/sisisi/apple_stock.csv',index_col='Date',parse_dates=True)
+# 또는 df = pd.read_csv('c:/sisisi/apple_stock.csv',index_col='Date',parse_dates=['Date']) # 파싱(구문분석)할 컬럼을 직접 지정하기 / 파싱 안되는 컬럼이 있을수도 있으니까
+df.head()
+df.index
+
+###
+def dateparser(str_dt):
+    return pd.datetime.strptime(str_dt,'%m-%d-%Y')
+
+dateparser('01-01-2019') # datetime.datetime(2019, 1, 1, 0, 0)
+###
+
+def dateparser(str_dt):
+    return pd.datetime.strptime(str_dt,'%Y-%m-%d')
+
+
+df = pd.read_csv('c:/sisisi/apple_stock.csv',index_col='Date',parse_dates=['Date'],date_parser=dateparser)
+
+df.rolling(7).mean() # 롤링하는 갯수만큼 앞에 미싱이 발생함 / 6개의 미싱
+df.rolling(7).mean().head(10) # 6개의 미싱 발생
+
+df.rolling(window=30).mean()['Close'].plot() # 2010년~2019년까지 (종가 평균)의 흐름을 그래프로 보여줌
+# window매개변수 설명 = https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.Series.rolling.html
+
+df['2018':]['Close'].plot() # 2018년부터의 종가 흐름 그래프
+df['2018':].rolling(window=7).mean()['Close'].plot() # 일주일치 롤링과 따라가는 데이터 볼 수 있음 / 바로 위의 그래프보다 부드러워졌음
+
+
+df['Close: 30 Day Mean'] = df['Close'].rolling(30).mean()
+df[['Close','Close: 30 Day Mean']].plot(figsize=(15,7)) # df.rolling(window=30).mean()['Close'].plot()의 자세한 버전
+# Close값보다 Close: 30 Day Mean값이 부드러움
+
+
+# 누적평균이라 계속 늘어나기만 함
+df['Close'].expanding(min_periods=1).mean().plot(figsize=(15,7))
+
+
+# 구해보자
+#df['Close'] std 2 -2 20 MA : 풀어서 설명하면: 종가의 std에 곱하기2, 곱하기-2 해서 20일치 MA값 구하기.. 
+#df['Close: 20 Day Mean'] = df['Close'].rolling...
+#df['Upper'] = df['Close: 20Day Mean'] + 2 std Close
+#df['Lower'] = df['Close: 20Day Mean'] - 2 std Close
+#df[['Close','Close: 20Day Mean','Upper','Lower']].plot()
+
+df['Close: 20 Day Mean'] = df['Close'].rolling(window=20).mean()
+df['Upper'] = df['Close: 20 Day Mean'] + 2*df['Close'].rolling(20).std()
+df['Lower'] = df['Close: 20 Day Mean'] - 2*df['Close'].rolling(20).std()
+
+df['2018':][['Close','Close: 20 Day Mean','Upper','Lower']].plot(figsize=(15,7)) # 2018부터의 각각의 그래프 그려줌
+
+df.columns # Index(['High','Low','Open','Close','Volume','Adj Close','Close: 30 Day Mean','Close: 20 Day Mean','Upper','Lower'], dtype='object')
